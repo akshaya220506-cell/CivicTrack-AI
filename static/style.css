@@ -220,3 +220,4 @@ footer { border-top: 1px solid #edf0f5; }.footer-brand { color: var(--ink); lett
 .admin-complaint-photo { display: block; max-width: 100%; max-height: 540px; border-radius: .8rem; object-fit: contain; background: #f4f6f8; }
 .admin-timeline { max-height: 520px; overflow: auto; }
 @media (max-width: 575.98px) { .tracking-form .input-group { display: grid; gap: .6rem; } .tracking-form .input-group > * { border-radius: .5rem !important; } }
+.demo-mode-banner { padding: .7rem 1rem; text-align: center; background: #fff5e8; color: #704718; border-bottom: 1px solid #efd6b7; font-size: .9rem; }

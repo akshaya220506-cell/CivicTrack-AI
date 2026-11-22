@@ -9,6 +9,7 @@
 </head>
 <body>
     <nav class="navbar bg-white border-bottom"><div class="container py-2"><a class="navbar-brand fw-semibold" href="/">CivicTrack <span class="brand-ai">AI</span></a><a class="nav-link" href="/">Home</a></div></nav>
+    {% if demo_mode %}<div class="demo-mode-banner" role="status"><strong>FICTIONAL DEMO DATA</strong> — sample reference IDs are provided for this presentation.</div>{% endif %}
     <main class="form-page py-5"><div class="container tracking-container">
         <div class="eyebrow"><span class="eyebrow-dot"></span> COMPLAINT UPDATES</div>
         <h1 class="fw-bold mt-3">Track a complaint</h1>

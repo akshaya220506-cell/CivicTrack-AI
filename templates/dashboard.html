@@ -18,6 +18,7 @@
             <div class="d-flex align-items-center gap-3"><a class="nav-link" href="{{ url_for('track_complaint') }}">Track a complaint</a><a class="nav-link" href="/">Return to homepage</a></div>
         </div>
     </nav>
+    {% if demo_mode %}<div class="demo-mode-banner" role="status"><strong>FICTIONAL DEMO DATA</strong> — all sample complaints are invented for presentation.</div>{% endif %}
 
     <main class="public-dashboard py-5">
         <div class="container">

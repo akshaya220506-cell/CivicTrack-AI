@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import tempfile
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_limiter import Limiter
@@ -18,10 +19,18 @@ from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
 
-# Keep application data inside this project folder.
+# Local mode keeps using the project's existing database and uploads.
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = Path(os.getenv("CIVICTRACK_DATABASE_PATH", str(BASE_DIR / "civictrack.db")))
-UPLOAD_FOLDER = Path(os.getenv("CIVICTRACK_UPLOAD_FOLDER", str(BASE_DIR / "uploads")))
+DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() == "true"
+if DEMO_MODE:
+    # Deliberately choose the system temp directory and ignore local data paths.
+    DEMO_DATA_FOLDER = Path(tempfile.gettempdir()) / "civictrack-ai-demo"
+    DATABASE_PATH = DEMO_DATA_FOLDER / "civictrack-demo.db"
+    UPLOAD_FOLDER = DEMO_DATA_FOLDER / "uploads"
+else:
+    DEMO_DATA_FOLDER = None
+    DATABASE_PATH = Path(os.getenv("CIVICTRACK_DATABASE_PATH", str(BASE_DIR / "civictrack.db")))
+    UPLOAD_FOLDER = Path(os.getenv("CIVICTRACK_UPLOAD_FOLDER", str(BASE_DIR / "uploads")))
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 COMPLAINT_CATEGORIES = ("Damaged Roads", "Garbage", "Water Leakage", "Drainage", "Streetlights", "Other")
@@ -40,6 +49,7 @@ DEPARTMENT_BY_CATEGORY = {
 }
 
 app = Flask(__name__)
+app.config["DEBUG"] = False
 app.config["MAX_CONTENT_LENGTH"] = 6 * 1024 * 1024  # Includes form and multipart overhead.
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -54,16 +64,18 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # Load a local .env file when python-dotenv is installed. Environment variables
 # already supplied by the host remain supported if the optional loader is absent.
-try:
-    from dotenv import load_dotenv
+if not DEMO_MODE:
+    try:
+        from dotenv import load_dotenv
 
-    load_dotenv(BASE_DIR / ".env")
-except ImportError:
-    pass
+        load_dotenv(BASE_DIR / ".env")
+    except ImportError:
+        pass
 
 # Resolve these after loading .env so the configured values apply on startup.
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or app.config["SECRET_KEY"]
@@ -89,6 +101,87 @@ def database_connection():
         raise
     finally:
         connection.close()
+
+
+def seed_demo_data(connection):
+    """Insert a few clearly fictional rows into the isolated demo database only."""
+    year = datetime.now().year
+    examples = [
+        {
+            "id": f"CTA-{year}-D3A001", "title": "DEMO SAMPLE: damaged road surface",
+            "category": "Damaged Roads", "description": "Fictional example of a damaged road surface.",
+            "severity": "High", "status": "In Progress", "submitted": f"{year}-01-15T09:00:00",
+            "updated": f"{year}-01-16T09:00:00",
+            "department": DEPARTMENT_BY_CATEGORY["Damaged Roads"],
+            "summary": "Fictional sample road report for the demo dashboard.",
+            "reasoning": "Static fictional demo data; no Gemini request was made.",
+        },
+        {
+            "id": f"CTA-{year}-D3A002", "title": "DEMO SAMPLE: drainage overflow",
+            "category": "Drainage", "description": "Fictional example of a blocked public drain.",
+            "severity": "Medium", "status": "Under Review", "submitted": f"{year}-01-17T11:30:00",
+            "updated": f"{year}-01-18T11:30:00",
+            "department": DEPARTMENT_BY_CATEGORY["Drainage"],
+            "summary": "Fictional sample drainage report for the demo dashboard.",
+            "reasoning": "Static fictional demo data; no Gemini request was made.",
+        },
+        {
+            "id": f"CTA-{year}-D3A003", "title": "DEMO SAMPLE: streetlight not working",
+            "category": "Streetlights", "description": "Fictional example of a streetlight outage.",
+            "severity": "Low", "status": "Resolved", "submitted": f"{year}-01-19T14:15:00",
+            "updated": f"{year}-01-20T14:15:00",
+            "department": DEPARTMENT_BY_CATEGORY["Streetlights"],
+            "summary": "Fictional sample streetlight report for the demo dashboard.",
+            "reasoning": "Static fictional demo data; no Gemini request was made.",
+        },
+    ]
+    for sample in examples:
+        inserted = connection.execute(
+            """
+            INSERT OR IGNORE INTO complaints (
+                complaint_id, title, category, description, location, image_filename,
+                severity, suggested_department, status, submission_date, citizen_name,
+                citizen_phone, phone_verified, address, latitude, longitude,
+                location_method, landmark
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, NULL, 0, ?, NULL, NULL, 'Manual', NULL)
+            """,
+            (
+                sample["id"], sample["title"], sample["category"], sample["description"],
+                "Fictional demo zone, Hyderabad", sample["severity"], sample["department"],
+                sample["status"], sample["submitted"], "Fictional demo zone, Hyderabad",
+            ),
+        )
+        if not inserted.rowcount:
+            continue
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO complaint_analysis (
+                complaint_id, predicted_category, suggested_severity, recommended_department,
+                short_summary, reasoning, analysis_source
+            ) VALUES (?, ?, ?, ?, ?, ?, 'Fictional demo data')
+            """,
+            (
+                sample["id"], sample["category"], sample["severity"], sample["department"],
+                sample["summary"], sample["reasoning"],
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO complaint_status_history (
+                complaint_id, from_status, to_status, note, changed_at, changed_by
+            ) VALUES (?, NULL, 'Submitted', 'Fictional demo sample only.', ?, 'Demo System')
+            """,
+            (sample["id"], sample["submitted"]),
+        )
+        if sample["status"] != "Submitted":
+            connection.execute(
+                """
+                INSERT INTO complaint_status_history (
+                    complaint_id, from_status, to_status, note, changed_at, changed_by
+                ) VALUES (?, 'Submitted', ?, 'Fictional demo status update.', ?, 'Demo System')
+                """,
+                (sample["id"], sample["status"], sample["updated"]),
+            )
 
 
 def init_db():
@@ -204,6 +297,9 @@ def init_db():
                 """,
                 (admin_username, admin_password_hash, datetime.now().isoformat(timespec="seconds")),
             )
+
+        if DEMO_MODE:
+            seed_demo_data(connection)
 
 
 def normalize_indian_mobile(phone_number):
@@ -488,7 +584,7 @@ def render_report_form(errors=None, form_data=None, status_code=200):
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return render_template("index.html", demo_mode=DEMO_MODE)
 
 
 @app.route("/report", methods=["GET", "POST"])
@@ -711,6 +807,7 @@ def dashboard():
         statuses=DASHBOARD_STATUSES,
         selected={"category": category, "severity": severity, "status": status},
         has_filters=bool(category or severity or status),
+        demo_mode=DEMO_MODE,
     )
 
 
@@ -778,7 +875,9 @@ def track_complaint():
                     ).fetchall()
             if complaint is None:
                 error = "No complaint was found with that reference ID."
-    return render_template("tracking.html", complaint=complaint, updates=updates, error=error)
+    return render_template(
+        "tracking.html", complaint=complaint, updates=updates, error=error, demo_mode=DEMO_MODE
+    )
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -945,4 +1044,9 @@ init_db()
 
 
 if __name__ == "__main__":
-    app.run()
+    assigned_port = os.getenv("PORT")
+    app.run(
+        host="0.0.0.0" if assigned_port else "127.0.0.1",
+        port=int(assigned_port or "5000"),
+        debug=False,
+    )
