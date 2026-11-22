@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f9fc">
+    <title>Report a Civic Issue | CivicTrack AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar bg-white border-bottom">
+        <div class="container py-2">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-semibold" href="/" aria-label="CivicTrack AI home">
+                <span class="brand-mark" aria-hidden="true"><span></span></span>
+                CivicTrack <span class="brand-ai">AI</span>
+            </a>
+            <a class="nav-link" href="/">Back to home</a>
+        </div>
+    </nav>
+
+    <main class="form-page py-5">
+        <div class="container form-container">
+            <div class="form-heading mb-4">
+                <div class="eyebrow"><span class="eyebrow-dot"></span> CIVIC ISSUE REPORT</div>
+                <h1 class="fw-bold mt-3">Tell us what needs attention.</h1>
+                <p class="text-secondary mb-0">Share a local issue with enough detail to help the right civic team understand it.</p>
+            </div>
+
+            <div class="classification-note mb-4" role="note">
+                <span class="note-mark" aria-hidden="true">i</span>
+                <p class="mb-0"><strong>Smart Civic Complaint Analysis:</strong> Gemini may provide an advisory category and severity when the description appears safe to share. Otherwise, local keyword rules are used. These suggestions are not final decisions.</p>
+            </div>
+
+            <form class="report-form" action="{{ url_for('report') }}" method="post" enctype="multipart/form-data" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if errors %}
+                <div class="alert alert-danger" role="alert" aria-live="assertive">
+                    <strong>Please review the highlighted fields:</strong>
+                    <ul class="mb-0 mt-2">{% for message in errors.values() %}<li>{{ message }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+
+                <section class="citizen-contact mb-4" aria-labelledby="contact-heading">
+                    <h2 class="h5 fw-semibold mb-3" id="contact-heading">Your contact details</h2>
+                    <div class="mb-3">
+                        <label for="citizen-name" class="form-label">Full name <span class="required-mark">*</span></label>
+                        <input class="form-control {% if errors.get('citizen_name') %}is-invalid{% endif %}" id="citizen-name" name="citizen_name" type="text" maxlength="120" autocomplete="name" value="{{ form_data.get('citizen_name', '') }}" required aria-describedby="name-help{% if errors.get('citizen_name') %} name-error{% endif %}">
+                        <div class="form-text" id="name-help">Enter the name civic staff can use if they need to clarify your report.</div>
+                        {% if errors.get('citizen_name') %}<div class="invalid-feedback" id="name-error">{{ errors.citizen_name }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone-number" class="form-label">Indian mobile number <span class="required-mark">*</span></label>
+                        <div class="input-group phone-input-group">
+                            <span class="input-group-text" aria-label="India country code">+91</span>
+                            <input class="form-control {% if errors.get('phone_number') %}is-invalid{% endif %}" id="phone-number" name="phone_number" type="tel" inputmode="numeric" autocomplete="tel-national" pattern="[6-9][0-9]{9}" minlength="10" maxlength="10" placeholder="9876543210" value="{{ form_data.get('phone_number', '') }}" required aria-describedby="phone-help{% if errors.get('phone_number') %} phone-error{% endif %}">
+                            {% if errors.get('phone_number') %}<div class="invalid-feedback" id="phone-error">{{ errors.phone_number }}</div>{% endif %}
+                        </div>
+                        <div class="form-text" id="phone-help">Enter 10 digits beginning with 6, 7, 8, or 9. The +91 country code is added when saved.</div>
+                    </div>
+                    <div class="otp-pending-note mb-3" role="note"><strong>Phone verification is pending SMS integration.</strong> No OTP is sent in this prototype, and your number will be stored as unverified.</div>
+                    <div class="form-check consent-check {% if errors.get('contact_consent') %}consent-invalid{% endif %}">
+                        <input class="form-check-input {% if errors.get('contact_consent') %}is-invalid{% endif %}" type="checkbox" id="contact-consent" name="contact_consent" value="yes" {% if form_data.get('contact_consent') == 'yes' %}checked{% endif %} required aria-describedby="consent-help{% if errors.get('contact_consent') %} consent-error{% endif %}">
+                        <label class="form-check-label" for="contact-consent">I consent to CivicTrack AI storing my name and mobile number so civic staff can contact me if they need to clarify this report. <span class="required-mark">*</span></label>
+                        <div class="form-text" id="consent-help">Your contact details are private and are not shown on the public dashboard. They are stored for a future protected staff interface.</div>
+                        {% if errors.get('contact_consent') %}<div class="invalid-feedback d-block" id="consent-error">{{ errors.contact_consent }}</div>{% endif %}
+                    </div>
+                </section>
+
+                <div class="mb-4">
+                    <label for="title" class="form-label">Complaint title <span class="required-mark">*</span></label>
+                    <input class="form-control {% if errors.get('title') %}is-invalid{% endif %}" id="title" name="title" type="text" maxlength="120" value="{{ form_data.get('title', '') }}" placeholder="For example, pothole near the bus stop" required aria-describedby="title-help{% if errors.get('title') %} title-error{% endif %}">
+                    <div class="form-text" id="title-help">A short summary of the problem, up to 120 characters.</div>
+                    {% if errors.get('title') %}<div class="invalid-feedback" id="title-error">{{ errors.title }}</div>{% endif %}
+                </div>
+
+                <div class="mb-4">
+                    <label for="category" class="form-label">Issue category <span class="required-mark">*</span></label>
+                    <select class="form-select {% if errors.get('category') %}is-invalid{% endif %}" id="category" name="category" required aria-describedby="category-help{% if errors.get('category') %} category-error{% endif %}">
+                        <option value="">Choose a category</option>
+                        {% for category in categories %}<option value="{{ category }}" {% if form_data.get('category') == category %}selected{% endif %}>{{ category }}</option>{% endfor %}
+                    </select>
+                    <div class="form-text" id="category-help">Select the option that best describes the issue.</div>
+                    {% if errors.get('category') %}<div class="invalid-feedback" id="category-error">{{ errors.category }}</div>{% endif %}
+                </div>
+
+                <div class="mb-4">
+                    <label for="description" class="form-label">Detailed description <span class="required-mark">*</span></label>
+                    <textarea class="form-control {% if errors.get('description') %}is-invalid{% endif %}" id="description" name="description" rows="5" maxlength="3000" placeholder="What happened, how long has it been there, and who may be affected?" required aria-describedby="description-help{% if errors.get('description') %} description-error{% endif %}">{{ form_data.get('description', '') }}</textarea>
+                    <div class="form-text" id="description-help">Please keep the description to 3,000 characters or fewer. Avoid names, contact details, and precise addresses. If the text may contain personal information, CivicTrack uses local rules instead of sending it to Gemini.</div>
+                    {% if errors.get('description') %}<div class="invalid-feedback" id="description-error">{{ errors.description }}</div>{% endif %}
+                </div>
+
+                <fieldset class="location-fieldset mb-4">
+                    <legend class="form-label">Issue location <span class="required-mark">*</span></legend>
+                    <p class="form-text mt-0 mb-3">Choose how to locate the issue. GPS permission is optional; a written address is required for every report.</p>
+                    <div class="location-methods mb-3" role="radiogroup" aria-label="Location method">
+                        {% for method, label in [('Manual', 'Enter address'), ('GPS', 'Use GPS'), ('Map', 'Choose map pin')] %}
+                        <label class="location-method-option {% if form_data.get('location_method', 'Manual') == method %}selected{% endif %}"><input type="radio" name="location_method" value="{{ method }}" {% if form_data.get('location_method', 'Manual') == method %}checked{% endif %} required><span>{{ label }}</span></label>
+                        {% endfor %}
+                    </div>
+                    {% if errors.get('location_method') %}<div class="text-danger small mb-2">{{ errors.location_method }}</div>{% endif %}
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Address or location description <span class="required-mark">*</span></label>
+                        <textarea class="form-control {% if errors.get('address') %}is-invalid{% endif %}" id="address" name="address" rows="2" maxlength="500" placeholder="Street, area, city, and any useful detail" required aria-describedby="address-help{% if errors.get('address') %} address-error{% endif %}">{{ form_data.get('address', '') }}</textarea>
+                        <div class="form-text" id="address-help">For example: Road outside the public library, Banjara Hills, Hyderabad.</div>
+                        {% if errors.get('address') %}<div class="invalid-feedback" id="address-error">{{ errors.address }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="landmark" class="form-label">Landmark or additional directions <span class="text-secondary fw-normal">(optional)</span></label>
+                        <input class="form-control {% if errors.get('landmark') %}is-invalid{% endif %}" id="landmark" name="landmark" type="text" maxlength="500" value="{{ form_data.get('landmark', '') }}" placeholder="Near City Centre Mall, opposite the bus stop" aria-describedby="landmark-help{% if errors.get('landmark') %} landmark-error{% endif %}">
+                        <div class="form-text" id="landmark-help">Add a nearby building, crossing, or directions that help staff find the issue.</div>
+                        {% if errors.get('landmark') %}<div class="invalid-feedback" id="landmark-error">{{ errors.landmark }}</div>{% endif %}
+                    </div>
+                    <div class="map-controls d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" id="gps-button">Use my current location</button>
+                        <span class="small text-secondary">Or click the map and drag the pin to the issue.</span>
+                    </div>
+                    {% if errors.get('coordinates') %}<div class="text-danger small mb-2">{{ errors.coordinates }}</div>{% endif %}
+                    <div id="issue-map" class="issue-map" role="region" aria-label="Map for choosing the civic issue location"></div>
+                    <div id="location-message" class="form-text mt-2" role="status" aria-live="polite">Map pin and GPS are optional. You can submit with a manual address only.</div>
+                    <input type="hidden" id="latitude" name="latitude" value="{{ form_data.get('latitude', '') }}">
+                    <input type="hidden" id="longitude" name="longitude" value="{{ form_data.get('longitude', '') }}">
+                </fieldset>
+
+                <div class="mb-4">
+                    <label for="photo" class="form-label">Photo <span class="text-secondary fw-normal">(optional)</span></label>
+                    <input class="form-control {% if errors.get('photo') %}is-invalid{% endif %}" id="photo" name="photo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-describedby="photo-help{% if errors.get('photo') %} photo-error{% endif %}">
+                    <div class="form-text" id="photo-help">Choose an existing JPG, JPEG, PNG, or WEBP image from your gallery or computer. Maximum size: 5 MB.</div>
+                    {% if errors.get('photo') %}<div class="invalid-feedback" id="photo-error">{{ errors.photo }}</div>{% endif %}
+                    <div class="photo-actions mt-2">
+                        <input class="visually-hidden-focusable" id="photo-camera" name="photo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" aria-label="Take a photo using the rear camera" aria-describedby="camera-help">
+                        <label class="btn btn-outline-primary rounded-pill px-3" for="photo-camera">Take Photo</label>
+                        <span class="form-text" id="camera-help">Opens the rear camera on supported mobile browsers. If it is unavailable, choose a photo above.</span>
+                    </div>
+                    <div id="photo-client-error" class="photo-client-error small text-danger mt-2" role="alert" aria-live="assertive" hidden></div>
+                    <div id="photo-preview" class="photo-preview mt-3" hidden>
+                        <img id="photo-preview-image" alt="Preview of the selected complaint photo">
+                        <div class="photo-preview-info">
+                            <span id="photo-preview-name" class="small fw-semibold"></span>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <button class="btn btn-sm btn-outline-primary rounded-pill" id="retake-photo" type="button">Retake photo</button>
+                                <button class="btn btn-sm btn-outline-secondary rounded-pill" id="remove-photo" type="button">Remove photo</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions d-flex flex-column flex-sm-row align-items-sm-center gap-3 pt-2">
+                    <button class="btn btn-primary btn-lg rounded-pill px-4" type="submit">Submit complaint <span aria-hidden="true">&rarr;</span></button>
+                    <a class="btn btn-link text-secondary text-decoration-none" href="/">Cancel and return home</a>
+                </div>
+                <p class="small text-secondary mt-3 mb-0"><span class="required-mark">*</span> Required fields</p>
+            </form>
+        </div>
+    </main>
+
+    <footer class="py-4"><div class="container d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2"><a class="footer-brand fw-semibold text-decoration-none" href="/">CivicTrack <span>AI</span></a><p class="small text-secondary mb-0">Built for communities. Focused on local progress.</p><span class="small text-secondary">&copy; 2026 CivicTrack AI</span></div></footer>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const latitudeInput = document.getElementById("latitude");
+            const longitudeInput = document.getElementById("longitude");
+            const message = document.getElementById("location-message");
+            const methodOptions = document.querySelectorAll('input[name="location_method"]');
+            const gpsButton = document.getElementById("gps-button");
+            let map;
+            let marker;
+
+            function setMethod(value) {
+                methodOptions.forEach(function (option) {
+                    option.checked = option.value === value;
+                    option.closest(".location-method-option").classList.toggle("selected", option.checked);
+                });
+            }
+
+            function saveCoordinates(latitude, longitude, method) {
+                latitudeInput.value = latitude.toFixed(6);
+                longitudeInput.value = longitude.toFixed(6);
+                if (method) setMethod(method);
+                const point = [latitude, longitude];
+                if (map) {
+                    if (marker) marker.setLatLng(point);
+                    else {
+                        marker = L.marker(point, { draggable: true }).addTo(map);
+                        marker.on("dragend", function (event) {
+                            const moved = event.target.getLatLng();
+                            saveCoordinates(moved.lat, moved.lng, "Map");
+                            message.textContent = "Map pin updated. Please check the address and directions too.";
+                        });
+                    }
+                }
+            }
+
+            methodOptions.forEach(function (option) {
+                option.addEventListener("change", function () {
+                    setMethod(option.value);
+                    if (option.value === "Manual") {
+                        latitudeInput.value = "";
+                        longitudeInput.value = "";
+                        if (marker && map) map.removeLayer(marker);
+                        marker = null;
+                        message.textContent = "Manual address selected. No GPS permission or coordinates are required.";
+                    } else if (option.value === "GPS") {
+                        message.textContent = "Select Use my current location to capture GPS coordinates.";
+                    } else {
+                        message.textContent = "Click the map to place a pin, then drag it to adjust.";
+                    }
+                });
+            });
+
+            if (window.L) {
+                map = L.map("issue-map").setView([17.385, 78.4867], 12);
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+                map.on("click", function (event) {
+                    saveCoordinates(event.latlng.lat, event.latlng.lng, "Map");
+                    message.textContent = "Map pin selected. Drag the pin to adjust it, and enter the address above.";
+                });
+
+                const savedLat = Number(latitudeInput.value);
+                const savedLng = Number(longitudeInput.value);
+                if (latitudeInput.value && longitudeInput.value && Number.isFinite(savedLat) && Number.isFinite(savedLng) && Math.abs(savedLat) <= 90 && Math.abs(savedLng) <= 180) {
+                    saveCoordinates(savedLat, savedLng, null);
+                    map.setView([savedLat, savedLng], 16);
+                }
+                window.setTimeout(function () { map.invalidateSize(); }, 150);
+            } else {
+                message.textContent = "The online map could not load. You can still use GPS or enter the address manually.";
+            }
+
+            gpsButton.addEventListener("click", function () {
+                if (!navigator.geolocation) {
+                    message.textContent = "GPS is not available in this browser. Choose a map pin or enter the address manually.";
+                    return;
+                }
+                message.textContent = "Requesting browser permission for your current location…";
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    const latitude = position.coords.latitude;
+                    const longitude = position.coords.longitude;
+                    saveCoordinates(latitude, longitude, "GPS");
+                    if (map) map.setView([latitude, longitude], 16);
+                    message.textContent = "GPS coordinates captured. Please enter the nearest address above as well.";
+                }, function () {
+                    message.textContent = "Location permission was not granted or GPS is unavailable. You can use the map pin or manual address instead.";
+                }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+            });
+        });
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const galleryInput = document.getElementById("photo");
+            const cameraInput = document.getElementById("photo-camera");
+            const previewPanel = document.getElementById("photo-preview");
+            const previewImage = document.getElementById("photo-preview-image");
+            const previewName = document.getElementById("photo-preview-name");
+            const photoError = document.getElementById("photo-client-error");
+            const retakeButton = document.getElementById("retake-photo");
+            const removeButton = document.getElementById("remove-photo");
+            const allowedExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
+            const maxPhotoSize = 5 * 1024 * 1024;
+            let selectedInput = null;
+            let previewUrl = null;
+
+            function removeSelectedPhoto() {
+                galleryInput.value = "";
+                cameraInput.value = "";
+                selectedInput = null;
+                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                previewUrl = null;
+                previewImage.removeAttribute("src");
+                previewPanel.hidden = true;
+                previewName.textContent = "";
+            }
+
+            function showPhotoError(message) {
+                photoError.textContent = message;
+                photoError.hidden = false;
+            }
+
+            function handlePhotoChoice(event) {
+                const input = event.currentTarget;
+                const file = input.files && input.files[0];
+                if (!file) return;
+
+                const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+                if (!allowedExtensions.has(extension)) {
+                    if (selectedInput === input) removeSelectedPhoto();
+                    input.value = "";
+                    showPhotoError("Choose a JPG, JPEG, PNG, or WEBP image.");
+                    return;
+                }
+                if (file.size > maxPhotoSize) {
+                    if (selectedInput === input) removeSelectedPhoto();
+                    input.value = "";
+                    showPhotoError("The image must be 5 MB or smaller.");
+                    return;
+                }
+
+                if (selectedInput && selectedInput !== input) selectedInput.value = "";
+                selectedInput = input;
+                photoError.hidden = true;
+                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                previewUrl = URL.createObjectURL(file);
+                previewImage.src = previewUrl;
+                previewName.textContent = file.name + " (" + (file.size / 1024 / 1024).toFixed(2) + " MB)";
+                previewPanel.hidden = false;
+            }
+
+            galleryInput.addEventListener("change", handlePhotoChoice);
+            cameraInput.addEventListener("change", handlePhotoChoice);
+            retakeButton.addEventListener("click", function () { cameraInput.click(); });
+            removeButton.addEventListener("click", function () {
+                removeSelectedPhoto();
+                photoError.hidden = true;
+            });
+        });
+    </script>
+</body>
+</html>
