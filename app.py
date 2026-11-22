@@ -64,6 +64,13 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
+
+@app.route("/health", methods=["GET"])
+@limiter.exempt
+def health_check():
+    """Return a lightweight liveness response without touching application data."""
+    return {"status": "ok"}, 200
+
 DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
