@@ -407,6 +407,20 @@ def sanitize_description_for_gemini(description, private_values=()):
         r"\b(?:house|h\.?\s*no\.?|flat|plot|door)\s*(?:no\.?\s*)?\w[\w/-]*[^,.;\n]*",
         "[REDACTED ADDRESS]", safe_description, flags=re.IGNORECASE,
     )
+    # Generic location language is broadened before analysis; named landmarks
+    # are deliberately left for the safety check to reject.
+    safe_description = re.sub(
+        r"\b(?:near|beside|opposite|next\s+to)\s+(?:(?:the|a|an)\s+)?(?:public\s+)?park\b",
+        "in a public area", safe_description, flags=re.IGNORECASE,
+    )
+    safe_description = re.sub(
+        r"\b(?:near|beside|opposite|next\s+to)\s+(?:(?:the|a|an)\s+)?residential\s+street\b",
+        "in a residential area", safe_description, flags=re.IGNORECASE,
+    )
+    safe_description = re.sub(
+        r"\b(?:near|beside|opposite|next\s+to)\s+(?:(?:the|a|an)\s+)?(?:public\s+)?(?:bus\s+stop|playground)\b",
+        "in a public area", safe_description, flags=re.IGNORECASE,
+    )
     return safe_description
 
 
@@ -414,13 +428,34 @@ def description_is_safe_for_gemini(description, private_values=()):
     """Conservatively reject free text that still looks like it contains PII or a precise place."""
     if re.search(r"\d", description):
         return False
+    approved_words = set("""
+        a an the this that there it i we they is are was were be been being has have had
+        do does did can could may might will would should to of on in at for by with from
+        and or but if after before during because when while as into onto through over under
+        very more most less many some several one two three issue problem report complaint
+        civic local public area residential park playground bus stop damaged damage damaging
+        broken break crack cracked surface road street roads pothole potholes footpath sidewalk
+        pavement crossing junction traffic vehicle vehicles car cars bike bikes walk walking
+        pedestrian pedestrians swerve slow slowing unsafe danger dangerous safety hazard
+        collapsed collapse deep large small repair repairs urgent needs needed affecting affect
+        affected access blocked block blocking water leak leakage leaking pipe pipes burst supply
+        puddle puddles flood flooding waterlogging tap valve drain drainage drains clogged clogging
+        sewage sewer manhole overflow overflowing stagnant dirty clean smell foul garbage trash
+        waste rubbish pile piles bin bins collection collected uncollected sanitation pickup
+        streetlight streetlights light lights lamp lamps dark darkness electrical electricity wire
+        wires exposed flicker flickering outage signal signals working stopped fallen tree branch
+        debris day days night week weeks month months keeps continue continues continuously reported
+        creating causing causes caused forcing forces force after rain heavy monsoon nearby
+        continuous flow underground pipeline pipelines past amount drinking wasted accumulating
+        making difficult pass safely please arrange inspection soon possible
+    """.split())
     sensitive_patterns = (
         r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
         r"(?<!\w)(?:\+?91[\s-]?)?[6-9](?:[\s-]?\d){9}(?!\w)",
         r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
         r"\b(?:my name is|i am called|contact(?:ed)? by|reporter is)\s+[A-Z][a-z]+",
         r"\b(?:mr|mrs|ms|miss|dr)\.?\s+[A-Z][a-z]+",
-        r"\b(?:house|h\.?\s*no\.?|flat|plot|door|address|landmark|near|opposite|beside|next to|colony|nagar|cross|pin code)\b",
+        r"\b(?:house|h\.?\s*no\.?|flat|plot|door|address|landmark|colony|nagar|cross|pin\s+code)\b",
         r"\b\d{1,5}\s+[A-Za-z][\w -]{0,40}\b(?:road|street|lane|colony|nagar)\b",
         r"\b(?:with|from|by|named|called|reporter|resident|contact(?:ed)?|mr|mrs|ms|dr)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b",
     )
@@ -428,7 +463,10 @@ def description_is_safe_for_gemini(description, private_values=()):
         return False
     description_words = {word.casefold() for word in re.findall(r"[A-Za-z]+", description)}
     for private_value in private_values:
-        common_location_words = {"road", "roads", "street", "lane", "area", "ward", "hyderabad"}
+        common_location_words = {
+            "road", "roads", "street", "lane", "area", "ward", "hyderabad",
+            "residential", "park", "public", "bus", "stop", "playground", "near",
+        }
         private_words = {
             word.casefold() for word in re.findall(r"[A-Za-z]+", private_value)
             if len(word) >= 4 and word.casefold() not in common_location_words
@@ -439,37 +477,24 @@ def description_is_safe_for_gemini(description, private_values=()):
         "a", "an", "the", "there", "this", "it", "i", "we", "water", "garbage",
         "drain", "drainage", "streetlight", "streetlights", "road", "roads", "pothole",
         "potholes", "broken", "damaged", "blocked", "leaking", "overflowing", "sewage",
-        "pipe", "signal", "light", "lights", "trash", "waste", "several", "one", "two",
+        "pipe", "signal", "light", "lights", "trash", "waste", "several", "one", "two", "please",
     }
+    generic_capitalized_words = set("""
+        garbage overflow near residential street roads road bin bins park public area bus stop
+        playground damaged damage broken crack cracked pothole potholes drainage drain water
+        leak leakage pipe pipes sewage sewer manhole streetlight streetlights light lights lamp
+        lamps garbage trash waste rubbish signal signals
+    """.split())
     for sentence in re.split(r"[.!?\n]+", description.strip()):
         words = re.findall(r"[A-Za-z]+", sentence)
         if words and words[0].casefold() not in safe_sentence_starters:
             return False
         remaining = sentence[len(words[0]):] if words else ""
-        if re.search(r"\b[A-Z][a-z]{2,}\b", remaining):
+        capitalized_words = re.findall(r"\b[A-Z][a-z]{2,}\b", remaining)
+        if any(word.casefold() not in generic_capitalized_words for word in capitalized_words):
             return False
     # Only send descriptions made entirely from a small civic vocabulary and
     # ordinary grammar words. Unknown words can be names or precise places.
-    approved_words = set("""
-        a an the this that there it i we they is are was were be been being has have had
-        do does did can could may might will would should to of on in at for by with from
-        and or but if after before during because when while as into onto through over under
-        very more most less many some several one two three issue problem report complaint
-        civic local public damaged damage damaging broken break crack cracked surface road street
-        roads pothole potholes footpath sidewalk pavement crossing junction traffic vehicle
-        vehicles car cars bike bikes walk walking pedestrian pedestrians swerve slow slowing
-        unsafe danger dangerous safety hazard collapsed collapse deep large small repair
-        repairs urgent needs needed affecting affect affected access blocked block blocking
-        water leak leakage leaking pipe pipes burst supply puddle puddles flood flooding
-        waterlogging tap valve drain drainage drains clogged clogging sewage sewer manhole
-        overflow overflowing stagnant dirty clean smell foul garbage trash waste rubbish
-        pile piles bin bins collection collected uncollected sanitation pickup streetlight
-        streetlights light lights lamp lamps dark darkness electrical electricity wire wires
-        exposed flicker flickering outage signal signals working stopped damaged fallen
-        broken fallen tree branch debris day days night week weeks month months keeps
-        continue continues continuously continuously reported creating causing causes caused
-        forcing forces force cars surface has been after rain heavy monsoon near
-    """.split())
     words_in_description = {word.casefold() for word in re.findall(r"[A-Za-z]+", description)}
     return words_in_description.issubset(approved_words)
 
