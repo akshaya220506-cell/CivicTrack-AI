@@ -47,6 +47,13 @@ class GeminiPrivacyTests(unittest.TestCase):
         "it difficult for pedestrians and vehicles to pass safely. Please arrange an inspection "
         "and repair the damaged pipeline as soon as possible."
     )
+    WATER_LEAK_DIFFICULTIES_DESCRIPTION = (
+        "A continuous flow of clean water has been leaking from an underground water pipeline "
+        "in a residential area for the past two days. A large amount of water is being wasted, "
+        "and water is accumulating on the road. The leakage is creating difficulties for "
+        "pedestrians and vehicles. Please arrange an inspection and repair the damaged pipeline "
+        "as soon as possible."
+    )
 
     def test_ordinary_civic_phrases_are_sanitized_and_allowed(self):
         examples = (
@@ -95,6 +102,36 @@ class GeminiPrivacyTests(unittest.TestCase):
         self.assertIn("in a residential area", sent_description.casefold())
         self.assertNotIn("near the residential street", sent_description.casefold())
         self.assertNotEqual(sent_description, original)
+
+    def test_water_leak_description_with_difficulties_passes_privacy_filter(self):
+        original = self.WATER_LEAK_DIFFICULTIES_DESCRIPTION
+        sanitized = civic.sanitize_description_for_gemini(original)
+        self.assertTrue(civic.description_is_safe_for_gemini(sanitized), sanitized)
+
+        response = {
+            "predicted_category": "Water Leakage",
+            "suggested_severity": "High",
+            "recommended_department": civic.DEPARTMENT_BY_CATEGORY["Water Leakage"],
+            "short_summary": "A pipeline leak is wasting water and affecting road users.",
+            "reasoning": "The ongoing leak is accumulating water on the road.",
+        }
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "TEST_ONLY_KEY"}), patch.object(
+            civic,
+            "request_gemini_analysis",
+            return_value=json.dumps(response),
+        ) as request_gemini:
+            result = civic.analyze_complaint(
+                "Water Leakage", "Severe Water Leakage from Underground Pipeline", original
+            )
+
+        self.assertEqual(result["analysis_source"], "Gemini AI")
+        request_gemini.assert_called_once()
+        sent_category, sent_description, _server_key = request_gemini.call_args.args
+        self.assertEqual(sent_category, "Water Leakage")
+        # The sanitizer is applied before the request. This text contains only
+        # generic civic location wording, so the sanitized text remains unchanged.
+        self.assertEqual(sent_description, sanitized)
+        self.assertEqual(sent_description, original)
 
     def test_gemini_receives_only_category_and_sanitized_description(self):
         private_values = (

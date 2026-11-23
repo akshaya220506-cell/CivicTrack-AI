@@ -447,7 +447,7 @@ def description_is_safe_for_gemini(description, private_values=()):
         debris day days night week weeks month months keeps continue continues continuously reported
         creating causing causes caused forcing forces force after rain heavy monsoon nearby
         continuous flow underground pipeline pipelines past amount drinking wasted accumulating
-        making difficult pass safely please arrange inspection soon possible
+        making difficult difficulties pass safely please arrange inspection soon possible
     """.split())
     sensitive_patterns = (
         r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
